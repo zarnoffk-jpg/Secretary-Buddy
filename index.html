@@ -3,7 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- Security: Content Security Policy (DISABLED FOR SANDBOX RESTORATION) -->
+    <!-- <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://esm.sh; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://esm.sh https://generativelanguage.googleapis.com;"> -->
+    
     <title>Secretary Buddy</title>
+    
+    <!-- Security: Force HTTPS (DISABLED FOR SANDBOX RESTORATION) -->
+    <script>
+      /*
+      if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        location.replace(`https://${location.hostname}${location.pathname}${location.search}`);
+      }
+      */
+    </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <script>

@@ -20,8 +20,10 @@ export interface Correspondence {
 export interface ActionItem {
   id: string;
   title: string;
+  createdDate: string; // ISO Date string
   dueDate: string;
-  status: 'pending' | 'completed';
+  completedDate?: string; // ISO Date string (optional)
+  status: 'pending' | 'completed' | 'dropped';
   priority: 'low' | 'medium' | 'high';
   assignee: string;
 }
@@ -38,10 +40,32 @@ export interface Contact {
 export interface CaseLogEntry {
   id: string;
   caseNumber: string;
-  title: string;
+  title: string; // Usually Patient Name or Reference
   status: 'open' | 'pending' | 'closed';
   dateOpened: string;
-  notes: string;
+  
+  // HLC-7 Context
+  patientAge?: string;
+  patientGender?: string;
+  hospital?: string;
+  diagnosis?: string;
+  
+  // Clinical Snapshot
+  hgb?: string; // Hemoglobin
+  platelets?: string; // Platelet count
+  physicianName?: string;
+  
+  // Lessons Learned / Retrospective
+  physicianCooperation?: 'cooperative' | 'neutral' | 'hostile' | 'unknown';
+  treatmentsUsed?: string; // What strategies were employed?
+  articlesUsed?: string; // Were specific medical articles helpful?
+  
+  // The "Good, Bad, and Ugly"
+  successes?: string; // What went well?
+  challenges?: string; // The "Bad/Ugly" - obstacles faced
+  trainingNeeds?: string; // Lessons for the committee/Training opps
+  
+  notes?: string; // General overflow notes
 }
 
 export interface CommitteeMember {
@@ -83,6 +107,12 @@ export interface CommitteeMember {
   termEnd?: string;
 }
 
+export interface AppSettings {
+  enableEncryption: boolean;
+  enablePIIScrub: boolean;
+  enableCommitteeLogin: boolean;
+}
+
 export interface AppData {
   meetings: Meeting[];
   correspondence: Correspondence[];
@@ -94,4 +124,4 @@ export interface AppData {
   lastUpdated: string | null;
 }
 
-export type TabId = 'dashboard' | 'meetings' | 'correspondence' | 'actionItems' | 'caseLog' | 'roster';
+export type TabId = 'dashboard' | 'meetings' | 'correspondence' | 'actionItems' | 'caseLog' | 'roster' | 'settings';

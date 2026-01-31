@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Correspondence, Contact } from '../types';
-import { Plus, Edit2, Trash2, Search, Mail, Phone, User, FileText } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Mail, Phone, User, FileText, FileDown, CheckCircle2 } from 'lucide-react';
 import { Modal } from './ui/Modal';
 import { InputGroup, inputClasses } from './ui/InputGroup';
+import { jsPDF } from "jspdf";
 
 interface CorrespondenceProps {
   correspondence: Correspondence[];
@@ -15,6 +16,7 @@ export const CorrespondenceSection: React.FC<CorrespondenceProps> = ({ correspon
   const [editingItem, setEditingItem] = useState<Correspondence | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'incoming' | 'outgoing'>('all');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   
   const [formData, setFormData] = useState<Partial<Correspondence>>({ 
     date: new Date().toISOString().split('T')[0], 
@@ -39,6 +41,7 @@ export const CorrespondenceSection: React.FC<CorrespondenceProps> = ({ correspon
   const handleDelete = (id: string) => {
     if (window.confirm('Delete this record?')) {
       updateCorrespondence(correspondence.filter(c => c.id !== id));
+      if (selectedId === id) setSelectedId(null);
     }
   };
 
@@ -52,6 +55,84 @@ export const CorrespondenceSection: React.FC<CorrespondenceProps> = ({ correspon
     setShowForm(false);
     setEditingItem(null);
     setFormData({ date: new Date().toISOString().split('T')[0], direction: 'incoming', contact: '', subject: '', content: '', method: 'email' });
+  };
+
+  const handleExportPDF = () => {
+    if (!selectedId) return;
+
+    const item = correspondence.find(c => c.id === selectedId);
+    if (!item) return;
+
+    if (!item.content || !item.content.trim()) {
+        alert("This correspondence has no content to export.");
+        return;
+    }
+
+    try {
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 20; // Standard 20mm margin (approx 0.75 inch)
+        
+        // --- HLC LETTERHEAD TEMPLATE ---
+        // Header Color: HLC Blue (Approximate #005596)
+        const hlcBlue = [0, 85, 150]; 
+        
+        // 1. Logo Text
+        doc.setTextColor(hlcBlue[0], hlcBlue[1], hlcBlue[2]);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.text("Hospital Liaison Committee", margin, 20);
+        
+        doc.setFontSize(10);
+        doc.text("for Jehovah's Witnesses", margin, 25);
+        
+        // 2. Separator Line
+        doc.setDrawColor(hlcBlue[0], hlcBlue[1], hlcBlue[2]);
+        doc.setLineWidth(0.5);
+        doc.line(margin, 30, pageWidth - margin, 30);
+        
+        // 3. Fixed Location
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.text("St Vincent HLC", margin, 36);
+
+        // --- LETTER CONTENT ---
+        doc.setTextColor(0, 0, 0); // Reset to black
+        doc.setFont("times", "normal");
+        doc.setFontSize(11);
+        
+        let y = 55;
+
+        // Date
+        const dateStr = new Date(item.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        doc.text(dateStr, margin, y);
+        y += 10;
+
+        // Recipient Block (Contact)
+        doc.text(item.contact, margin, y);
+        y += 14; 
+
+        // Subject Line
+        if (item.subject) {
+            doc.setFont("times", "bold");
+            doc.text(`Re: ${item.subject}`, margin, y);
+            doc.setFont("times", "normal");
+            y += 10;
+        }
+
+        // Body Text
+        // We split text to fit width
+        const bodyLines = doc.splitTextToSize(item.content, pageWidth - (margin * 2));
+        doc.text(bodyLines, margin, y);
+
+        // --- FOOTER / FILENAME ---
+        const safeRef = (item.contact || "reference").replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        doc.save(`correspondence_${safeRef}_${item.date}.pdf`);
+
+    } catch (e) {
+        console.error(e);
+        alert("Unable to load HLC letterhead template. Please try again or contact the administrator.");
+    }
   };
 
   const getMethodIcon = (method: string) => {
@@ -90,20 +171,30 @@ export const CorrespondenceSection: React.FC<CorrespondenceProps> = ({ correspon
             onChange={e => setSearchTerm(e.target.value)}
           />
         </div>
-        <div className="flex gap-2 p-1 bg-white/50 backdrop-blur-sm rounded-2xl border border-sand/50">
-          {['all', 'incoming', 'outgoing'].map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f as any)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition-all ${
-                filter === f 
-                  ? 'bg-clay text-white shadow-sm' 
-                  : 'text-subtle hover:bg-white/50'
-              }`}
+        <div className="flex items-center gap-2">
+            <button 
+                onClick={handleExportPDF}
+                disabled={!selectedId}
+                className="flex items-center justify-center w-12 h-12 bg-white border border-sand/50 rounded-xl text-ink hover:bg-taupe hover:text-clay disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                title="Export correspondence to PDF"
             >
-              {f}
+                <FileDown size={20} />
             </button>
-          ))}
+            <div className="flex gap-2 p-1 bg-white/50 backdrop-blur-sm rounded-2xl border border-sand/50">
+            {['all', 'incoming', 'outgoing'].map((f) => (
+                <button
+                key={f}
+                onClick={() => setFilter(f as any)}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition-all ${
+                    filter === f 
+                    ? 'bg-clay text-white shadow-sm' 
+                    : 'text-subtle hover:bg-white/50'
+                }`}
+                >
+                {f}
+                </button>
+            ))}
+            </div>
         </div>
       </div>
 
@@ -205,46 +296,64 @@ export const CorrespondenceSection: React.FC<CorrespondenceProps> = ({ correspon
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredItems.map(item => (
-            <div key={item.id} className="bg-white rounded-2xl p-6 shadow-sm border border-transparent hover:border-sand hover:shadow-apple-card transition-all duration-300">
-               <div className="flex justify-between items-start">
-                <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase ${
-                      item.direction === 'incoming' 
-                        ? 'bg-green-100/50 text-green-700' 
-                        : 'bg-clay/10 text-clay'
-                    }`}>
-                      {item.direction === 'incoming' ? 'INCOMING' : 'OUTGOING'}
-                    </span>
-                    <span className="text-xs font-medium text-subtle">{new Date(item.date).toLocaleDateString()}</span>
-                    <span className="flex items-center gap-1 text-xs font-medium text-subtle/80 capitalize">
-                      {getMethodIcon(item.method)} {item.method}
-                    </span>
-                  </div>
-                  <h3 className="text-lg font-bold text-ink mb-1">{item.subject}</h3>
-                  <div className="text-sm font-semibold text-clay mb-3">{item.contact}</div>
-                  <p className="text-subtle text-sm leading-relaxed max-w-2xl">
-                    {item.content}
-                  </p>
+          {filteredItems.map(item => {
+            const isSelected = selectedId === item.id;
+            return (
+                <div 
+                    key={item.id} 
+                    onClick={() => setSelectedId(isSelected ? null : item.id)}
+                    className={`bg-white rounded-2xl p-6 shadow-sm border transition-all duration-300 cursor-pointer relative ${
+                        isSelected 
+                            ? 'border-clay ring-1 ring-clay shadow-md bg-clay/5' 
+                            : 'border-transparent hover:border-sand hover:shadow-apple-card'
+                    }`}
+                >
+                {isSelected && (
+                    <div className="absolute top-4 right-4 text-clay animate-in fade-in zoom-in duration-200">
+                        <CheckCircle2 size={24} fill="currentColor" className="text-white" />
+                    </div>
+                )}
+                <div className="flex justify-between items-start">
+                    <div>
+                    <div className="flex items-center gap-3 mb-2">
+                        <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase ${
+                        item.direction === 'incoming' 
+                            ? 'bg-green-100/50 text-green-700' 
+                            : 'bg-clay/10 text-clay'
+                        }`}>
+                        {item.direction === 'incoming' ? 'INCOMING' : 'OUTGOING'}
+                        </span>
+                        <span className="text-xs font-medium text-subtle">{new Date(item.date).toLocaleDateString()}</span>
+                        <span className="flex items-center gap-1 text-xs font-medium text-subtle/80 capitalize">
+                        {getMethodIcon(item.method)} {item.method}
+                        </span>
+                    </div>
+                    <h3 className="text-lg font-bold text-ink mb-1">{item.subject}</h3>
+                    <div className="text-sm font-semibold text-clay mb-3">{item.contact}</div>
+                    <p className="text-subtle text-sm leading-relaxed max-w-2xl">
+                        {item.content}
+                    </p>
+                    </div>
+                    <div className="flex gap-2">
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); handleEdit(item); }} 
+                        className="p-2 text-subtle hover:bg-taupe rounded-lg transition-colors z-10"
+                        title="Edit Record"
+                    >
+                        <Edit2 size={18} />
+                    </button>
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} 
+                        className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors z-10"
+                        title="Delete Record"
+                    >
+                        <Trash2 size={18} />
+                    </button>
+                    </div>
                 </div>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => handleEdit(item)} 
-                    className="p-2 text-subtle hover:bg-taupe rounded-lg transition-colors"
-                  >
-                    <Edit2 size={18} />
-                  </button>
-                  <button 
-                    onClick={() => handleDelete(item.id)} 
-                    className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    <Trash2 size={18} />
-                  </button>
                 </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

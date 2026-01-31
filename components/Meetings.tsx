@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Meeting } from '../types';
-import { Plus, Edit2, Trash2, Calendar, Clock, MapPin } from 'lucide-react';
+import { Plus, Edit2, Trash2, Calendar, Clock, MapPin, Download } from 'lucide-react';
 import { Modal } from './ui/Modal';
 import { InputGroup, inputClasses } from './ui/InputGroup';
+import { jsPDF } from "jspdf";
 
 interface MeetingsProps {
   meetings: Meeting[];
@@ -42,19 +43,104 @@ export const MeetingsSection: React.FC<MeetingsProps> = ({ meetings, updateMeeti
     setFormData({ title: '', date: '', time: '', location: '', notes: '' });
   };
 
+  const handleExportPDF = () => {
+    if (sortedMeetings.length === 0) return;
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 14;
+    let y = 20;
+
+    // --- Header ---
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text("Meetings Schedule", pageWidth / 2, y, { align: "center" });
+    y += 10;
+    
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth / 2, y, { align: "center" });
+    y += 15;
+
+    // --- Table Definition ---
+    const headers = [
+        { title: "Date", x: margin, w: 30 },
+        { title: "Time", x: margin + 30, w: 25 },
+        { title: "Meeting Title", x: margin + 55, w: 80 },
+        { title: "Location", x: margin + 135, w: 45 }
+    ];
+
+    // Draw Table Header
+    doc.setFillColor(240, 240, 240);
+    doc.rect(margin, y - 5, pageWidth - (margin * 2), 8, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    
+    headers.forEach(h => {
+        doc.text(h.title, h.x, y);
+    });
+    y += 6;
+
+    // Draw Rows
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    
+    sortedMeetings.forEach((m) => {
+        // Page break check
+        if (y > 270) {
+            doc.addPage();
+            y = 20;
+            // Optional: Draw header again if strict table format is needed
+        }
+
+        const dateStr = new Date(m.date).toLocaleDateString();
+        const timeStr = m.time || '-';
+        // Wrap text
+        const titleStr = doc.splitTextToSize(m.title, headers[2].w - 5);
+        const locStr = doc.splitTextToSize(m.location || '-', headers[3].w - 5);
+        
+        // Calculate dynamic row height
+        const maxLines = Math.max(titleStr.length, locStr.length);
+        const rowHeight = Math.max(10, maxLines * 5 + 4);
+
+        doc.text(dateStr, headers[0].x, y);
+        doc.text(timeStr, headers[1].x, y);
+        doc.text(titleStr, headers[2].x, y);
+        doc.text(locStr, headers[3].x, y);
+
+        // Grid line
+        doc.setDrawColor(230, 230, 230);
+        doc.line(margin, y + rowHeight - 4, pageWidth - margin, y + rowHeight - 4);
+
+        y += rowHeight;
+    });
+
+    doc.save(`meetings_export_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between mb-8 pb-6 border-b border-sand">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8 pb-6 border-b border-sand">
         <div>
           <h2 className="text-4xl font-serif font-bold text-ink">Meetings</h2>
           <p className="text-subtle mt-2 font-serif italic">Schedule, agendas, and minutes</p>
         </div>
-        <button 
-          onClick={() => { setFormData({ title: '', date: '', time: '', location: '', notes: '' }); setEditingItem(null); setShowForm(true); }}
-          className="flex items-center gap-2 bg-clay text-white px-6 py-3 rounded-lg font-semibold hover:bg-clay/90 transition-all shadow-md active:translate-y-0.5"
-        >
-          <Plus size={18} /> New Meeting
-        </button>
+        <div className="flex gap-3">
+             <button 
+                onClick={handleExportPDF}
+                disabled={sortedMeetings.length === 0}
+                className="flex items-center justify-center bg-white text-ink border border-sand w-12 h-12 rounded-xl hover:bg-taupe transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Export meetings to PDF"
+             >
+                <Download size={22} />
+             </button>
+            <button 
+              onClick={() => { setFormData({ title: '', date: '', time: '', location: '', notes: '' }); setEditingItem(null); setShowForm(true); }}
+              className="flex items-center gap-2 bg-clay text-white px-6 py-3 rounded-xl font-semibold hover:bg-clay/90 transition-all shadow-md active:translate-y-0.5"
+            >
+              <Plus size={18} /> New Meeting
+            </button>
+        </div>
       </div>
 
       {showForm && (
