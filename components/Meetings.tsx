@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Meeting } from '../types';
-import { Plus, Edit2, Trash2, Calendar, Clock, MapPin, Download } from 'lucide-react';
+import { Plus, Edit2, Trash2, Calendar, Clock, MapPin, Download, Save, RefreshCw } from 'lucide-react';
 import { Modal } from './ui/Modal';
 import { InputGroup, inputClasses } from './ui/InputGroup';
 import { jsPDF } from "jspdf";
+import { supabase } from '../supabaseClient';
 
 interface MeetingsProps {
   meetings: Meeting[];
@@ -13,9 +14,42 @@ interface MeetingsProps {
 export const MeetingsSection: React.FC<MeetingsProps> = ({ meetings, updateMeetings }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<Meeting | null>(null);
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<Partial<Meeting>>({
     title: '', date: '', time: '', location: '', notes: ''
   });
+
+  // Fetch from Supabase
+  const fetchMeetings = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('meetings')
+      .select('*')
+      .order('meeting_date', { ascending: true });
+
+    if (error) {
+      console.error('Supabase meetings fetch error', error);
+    } else if (data) {
+      const mappedMeetings: Meeting[] = data.map((m: any) => ({
+        id: m.id.toString(),
+        title: m.title || 'Untitled',
+        date: m.meeting_date || m.date || new Date().toISOString().split('T')[0],
+        time: m.meeting_time || m.time || '', 
+        location: m.location || '',
+        notes: m.notes || ''
+      }));
+      updateMeetings(mappedMeetings);
+    }
+    setLoading(false);
+  }, [updateMeetings]);
+
+  // Initial fetch on mount
+  useEffect(() => {
+    fetchMeetings();
+    // We intentionally ignore dependency array warnings to prevent infinite loops 
+    // caused by the unstable updateMeetings prop passed from parent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sortedMeetings = [...meetings].sort((a, b) => b.date.localeCompare(a.date));
 
@@ -25,22 +59,72 @@ export const MeetingsSection: React.FC<MeetingsProps> = ({ meetings, updateMeeti
     setShowForm(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm('Delete this meeting?')) {
-      updateMeetings(meetings.filter(m => m.id !== id));
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!window.confirm('Delete this meeting permanently?')) return;
+
+    // Optimistic Update: Remove immediately for "instant" feel
+    const previousMeetings = [...meetings];
+    const optimisticList = meetings.filter(m => m.id !== id);
+    updateMeetings(optimisticList);
+
+    try {
+      const { error } = await supabase
+        .from('meetings')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      
+      // Success: The item is already gone from UI.
+      // We can optionally refetch to be 100% in sync, but mostly not needed if successful.
+      
+    } catch (error: any) {
+      // Revert if failed
+      console.error('Supabase delete error', error);
+      alert(`Failed to delete: ${error.message}`);
+      updateMeetings(previousMeetings);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
+
+    const payload = {
+      title: formData.title,
+      meeting_date: formData.date,
+      meeting_time: formData.time,
+      location: formData.location,
+      notes: formData.notes
+    };
+
+    let error = null;
+
     if (editingItem) {
-      updateMeetings(meetings.map(m => m.id === editingItem.id ? { ...formData as Meeting, id: editingItem.id } : m));
+      const { error: updateError } = await supabase
+        .from('meetings')
+        .update(payload)
+        .eq('id', editingItem.id);
+      error = updateError;
     } else {
-      updateMeetings([...meetings, { ...formData as Meeting, id: Date.now().toString() }]);
+      const { error: insertError } = await supabase
+        .from('meetings')
+        .insert([payload]);
+      error = insertError;
     }
-    setShowForm(false);
-    setEditingItem(null);
-    setFormData({ title: '', date: '', time: '', location: '', notes: '' });
+
+    if (error) {
+      console.error('Save error', error);
+      alert(`Failed to save: ${error.message}`);
+    } else {
+      // Refresh to get new IDs or confirmed state
+      await fetchMeetings();
+      setShowForm(false);
+      setEditingItem(null);
+      setFormData({ title: '', date: '', time: '', location: '', notes: '' });
+    }
+    setLoading(false);
   };
 
   const handleExportPDF = () => {
@@ -51,7 +135,7 @@ export const MeetingsSection: React.FC<MeetingsProps> = ({ meetings, updateMeeti
     const margin = 14;
     let y = 20;
 
-    // --- Header ---
+    // Header
     doc.setFontSize(18);
     doc.setFont("helvetica", "bold");
     doc.text("Meetings Schedule", pageWidth / 2, y, { align: "center" });
@@ -62,7 +146,7 @@ export const MeetingsSection: React.FC<MeetingsProps> = ({ meetings, updateMeeti
     doc.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth / 2, y, { align: "center" });
     y += 15;
 
-    // --- Table Definition ---
+    // Table
     const headers = [
         { title: "Date", x: margin, w: 30 },
         { title: "Time", x: margin + 30, w: 25 },
@@ -70,7 +154,6 @@ export const MeetingsSection: React.FC<MeetingsProps> = ({ meetings, updateMeeti
         { title: "Location", x: margin + 135, w: 45 }
     ];
 
-    // Draw Table Header
     doc.setFillColor(240, 240, 240);
     doc.rect(margin, y - 5, pageWidth - (margin * 2), 8, "F");
     doc.setFont("helvetica", "bold");
@@ -81,25 +164,19 @@ export const MeetingsSection: React.FC<MeetingsProps> = ({ meetings, updateMeeti
     });
     y += 6;
 
-    // Draw Rows
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     
     sortedMeetings.forEach((m) => {
-        // Page break check
         if (y > 270) {
             doc.addPage();
             y = 20;
-            // Optional: Draw header again if strict table format is needed
         }
 
         const dateStr = new Date(m.date).toLocaleDateString();
         const timeStr = m.time || '-';
-        // Wrap text
         const titleStr = doc.splitTextToSize(m.title, headers[2].w - 5);
         const locStr = doc.splitTextToSize(m.location || '-', headers[3].w - 5);
-        
-        // Calculate dynamic row height
         const maxLines = Math.max(titleStr.length, locStr.length);
         const rowHeight = Math.max(10, maxLines * 5 + 4);
 
@@ -108,7 +185,6 @@ export const MeetingsSection: React.FC<MeetingsProps> = ({ meetings, updateMeeti
         doc.text(titleStr, headers[2].x, y);
         doc.text(locStr, headers[3].x, y);
 
-        // Grid line
         doc.setDrawColor(230, 230, 230);
         doc.line(margin, y + rowHeight - 4, pageWidth - margin, y + rowHeight - 4);
 
@@ -122,7 +198,10 @@ export const MeetingsSection: React.FC<MeetingsProps> = ({ meetings, updateMeeti
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8 pb-6 border-b border-sand">
         <div>
-          <h2 className="text-4xl font-serif font-bold text-ink">Meetings</h2>
+          <h2 className="text-4xl font-serif font-bold text-ink flex items-center gap-3">
+            Meetings
+            {loading && <RefreshCw size={20} className="animate-spin text-clay" />}
+          </h2>
           <p className="text-subtle mt-2 font-serif italic">Schedule, agendas, and minutes</p>
         </div>
         <div className="flex gap-3">
@@ -199,13 +278,16 @@ export const MeetingsSection: React.FC<MeetingsProps> = ({ meetings, updateMeeti
                 type="button" 
                 onClick={() => setShowForm(false)}
                 className="px-6 py-3 rounded-xl border border-sand font-semibold text-subtle hover:bg-taupe hover:text-ink transition-colors"
+                disabled={loading}
               >
                 Cancel
               </button>
               <button 
                 type="submit" 
-                className="px-6 py-3 rounded-xl bg-clay text-white font-semibold hover:bg-clay/90 transition-colors shadow-sm"
+                className="px-6 py-3 rounded-xl bg-clay text-white font-semibold hover:bg-clay/90 transition-colors shadow-sm flex items-center gap-2"
+                disabled={loading}
               >
+                {loading ? <RefreshCw size={18} className="animate-spin" /> : <Save size={18} />}
                 {editingItem ? 'Save Changes' : 'Schedule Meeting'}
               </button>
             </div>
@@ -223,7 +305,6 @@ export const MeetingsSection: React.FC<MeetingsProps> = ({ meetings, updateMeeti
         <div className="grid grid-cols-1 gap-6">
           {sortedMeetings.map(meeting => (
             <div key={meeting.id} className="bg-surface rounded-xl p-0 shadow-card border border-sand hover:shadow-soft transition-all duration-200 overflow-hidden flex flex-col md:flex-row">
-              {/* Date Column */}
               <div className="bg-clay-light/30 p-6 flex flex-col items-center justify-center min-w-[120px] border-b md:border-b-0 md:border-r border-sand">
                   <span className="text-xs font-bold uppercase tracking-widest text-clay mb-1">{new Date(meeting.date).toLocaleDateString(undefined, {month: 'short'})}</span>
                   <span className="text-4xl font-serif font-bold text-ink">{new Date(meeting.date).getDate()}</span>
@@ -263,9 +344,10 @@ export const MeetingsSection: React.FC<MeetingsProps> = ({ meetings, updateMeeti
                       <Edit2 size={18} />
                     </button>
                     <button 
-                      onClick={() => handleDelete(meeting.id)} 
+                      onClick={(e) => handleDelete(e, meeting.id)} 
                       className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors"
                       title="Delete"
+                      disabled={loading}
                     >
                       <Trash2 size={18} />
                     </button>

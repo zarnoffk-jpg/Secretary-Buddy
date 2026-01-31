@@ -5,7 +5,7 @@ interface LoginProps {
   hasAccount: boolean;
   onAuthenticate: (email: string, password: string) => Promise<boolean>;
   onCreateAccount: (email: string, password: string) => Promise<void>;
-  onRecoverAccount: (vaultKey: string, newPassword: string) => Promise<boolean>;
+  onRecoverAccount: (vaultKey: string, newPassword: string, newEmail: string) => Promise<boolean>;
 }
 
 export const Login: React.FC<LoginProps> = ({ hasAccount, onAuthenticate, onCreateAccount, onRecoverAccount }) => {
@@ -20,6 +20,7 @@ export const Login: React.FC<LoginProps> = ({ hasAccount, onAuthenticate, onCrea
   const [vaultKey, setVaultKey] = useState('');
   const [newLoginPass, setNewLoginPass] = useState('');
   const [confirmNewLoginPass, setConfirmNewLoginPass] = useState('');
+  const [newEmail, setNewEmail] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,16 +58,18 @@ export const Login: React.FC<LoginProps> = ({ hasAccount, onAuthenticate, onCrea
     try {
       if (newLoginPass.length < 6) throw new Error("New password must be at least 6 characters.");
       if (newLoginPass !== confirmNewLoginPass) throw new Error("New passwords do not match.");
+      if (!newEmail.includes('@')) throw new Error("Please enter a valid email address.");
       
-      const success = await onRecoverAccount(vaultKey, newLoginPass);
+      const success = await onRecoverAccount(vaultKey, newLoginPass, newEmail);
       
       if (success) {
         setIsRecovering(false);
         setVaultKey('');
         setNewLoginPass('');
         setConfirmNewLoginPass('');
+        setNewEmail('');
         setError('');
-        alert("Login password updated successfully. Please log in.");
+        alert("Account credentials updated successfully. Please log in with your new details.");
       } else {
         throw new Error("Incorrect Vault Key. Cannot verify identity.");
       }
@@ -92,7 +95,7 @@ export const Login: React.FC<LoginProps> = ({ hasAccount, onAuthenticate, onCrea
             Recover Account
           </h1>
           <p className="text-sm text-subtle mb-6 leading-relaxed">
-            Enter your <strong>Vault Key</strong> to prove ownership. If correct, you can set a new login password without losing your data.
+            Enter your <strong>Vault Key</strong> to prove ownership. If correct, you can set a new login password and email.
           </p>
 
           <form onSubmit={handleRecovery} className="space-y-4">
@@ -104,6 +107,18 @@ export const Login: React.FC<LoginProps> = ({ hasAccount, onAuthenticate, onCrea
                   value={vaultKey}
                   onChange={(e) => setVaultKey(e.target.value)}
                   placeholder="Enter vault password"
+                  required
+                />
+            </div>
+
+            <div className="group bg-paper/50 focus-within:bg-white border border-sand/50 focus-within:border-ink/20 focus-within:shadow-sm rounded-2xl overflow-hidden transition-all duration-300">
+                <label className="block px-4 pt-3 pb-1 text-[10px] font-bold text-subtle/70 uppercase tracking-[0.15em]">New Email Address</label>
+                <input 
+                  type="email"
+                  className="w-full bg-transparent border-none px-4 pt-0 pb-3 text-ink font-medium focus:ring-0 text-base"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder="new@example.com"
                   required
                 />
             </div>
@@ -141,7 +156,7 @@ export const Login: React.FC<LoginProps> = ({ hasAccount, onAuthenticate, onCrea
               disabled={isLoading}
               className="w-full py-4 bg-clay text-white font-bold rounded-2xl shadow-lg hover:shadow-clay/30 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
-              {isLoading ? 'Verifying...' : <><RefreshCw size={18} /> Update Login Password</>}
+              {isLoading ? 'Verifying...' : <><RefreshCw size={18} /> Update Credentials</>}
             </button>
             
             <button 
@@ -242,7 +257,7 @@ export const Login: React.FC<LoginProps> = ({ hasAccount, onAuthenticate, onCrea
                     onClick={() => setIsRecovering(true)}
                     className="text-xs text-subtle hover:text-clay underline decoration-dotted transition-colors"
                 >
-                    Forgot login password?
+                    Forgot password or need to reset?
                 </button>
             </div>
         )}

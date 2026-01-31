@@ -178,7 +178,7 @@ export default function App() {
     setIsAuthenticated(true);
   };
 
-  const handleRecoverAccount = async (vaultKey: string, newLoginPass: string): Promise<boolean> => {
+  const handleRecoverAccount = async (vaultKey: string, newLoginPass: string, newEmail: string): Promise<boolean> => {
     try {
         // 1. Verify the Vault Key by attempting to decrypt the data
         const encrypted = localStorage.getItem(STORAGE_KEY_ENCRYPTED);
@@ -193,12 +193,18 @@ export default function App() {
             await decryptData(encrypted, vaultKey);
         }
 
-        // 2. Verification Successful - Update the Login Password Hash
+        // 2. Verification Successful - Update Credentials
         const ownerDataStr = localStorage.getItem(STORAGE_KEY_OWNER);
         if (ownerDataStr) {
             const ownerData = JSON.parse(ownerDataStr);
+            
+            // Update Password Hash
             const newHash = await hashString(newLoginPass);
             ownerData.passwordHash = newHash;
+            
+            // Update Email
+            ownerData.email = newEmail;
+
             localStorage.setItem(STORAGE_KEY_OWNER, JSON.stringify(ownerData));
             return true;
         }
